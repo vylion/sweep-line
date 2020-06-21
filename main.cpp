@@ -10,10 +10,12 @@
 #include <algorithm>
 #include <vector>
 #include <set>
+#include <queue>
 #include <chrono>
 
 #include "raylib.h"
 #include "helpers.h"
+#include "bst.h"
 
 using time_point = std::chrono::steady_clock::time_point;
 
@@ -23,6 +25,15 @@ struct ColorSegment
     Color c;
     uint id;
     std::set<uint> crossed_by;
+};
+
+struct SegmentPoint
+{
+    Point pos;
+    uint sid; // Segment ID
+    bool is_left;
+    bool is_intersect = false;
+    uint iid = 0;
 };
 
 void DrawColorSegment(const ColorSegment &cl)
@@ -67,14 +78,24 @@ void crossingNaive(std::vector<ColorSegment> &lines)
     }
 }
 
-bool sort_by_x(const ColorSegment &s, const ColorSegment &t)
+void crossingSweep(std::vector<ColorSegment> &lines, const std::vector<SegmentPoint> &points)
 {
-    return s.l.first.x < t.l.first.x;
-}
+    struct ComparePoints
+    {
+        bool operator()(const SegmentPoint &p, const SegmentPoint &q)
+        {
+            return p.pos.x > q.pos.x;
+        }
+    };
 
-void crossingSweep(std::vector<ColorSegment> &lines)
-{
-    std::sort(lines.begin(), lines.end(), sort_by_x);
+    std::priority_queue<SegmentPoint, std::vector<SegmentPoint>, ComparePoints> events(points.begin(), points.end(), ComparePoints());
+    std::cout << "Queue is size: " << events.size() << std::endl;
+    BST<SegmentPoint> tree;
+
+    while (!events.empty())
+    {
+        events.pop();
+    }
 }
 
 enum States
@@ -110,20 +131,35 @@ int main()
     const int screenHeight = 900;
     bool close = false;
 
-    const int nols = 80; // Number of lines
-
     // Initialize random engine
     std::random_device rd;
     std::mt19937_64 gen(rd()); // Delete "_64" in a 32 bit system
     std::uniform_int_distribution<> distrx(0, screenWidth);
     std::uniform_int_distribution<> distry(0, screenHeight);
+    std::uniform_int_distribution<> distrnols(50, 200);
 
     std::vector<ColorSegment> lines, naive_lines, sweep_lines;
+    std::vector<SegmentPoint> points, sweep_points;
+
+    const int nols = distrnols(gen); // Number of lines
 
     // Generate random lines
     for (uint i = 0; i < nols; ++i)
     {
-        LineSegment l = LineSegment{Point{distrx(gen), distry(gen)}, Point{distrx(gen), distry(gen)}};
+        Point p, q;
+        p = Point{distrx(gen), distry(gen)};
+        q = Point{distrx(gen), distry(gen)};
+
+        SegmentPoint sp, sq;
+
+        bool sp_is_left = (p.x < q.x);
+        sp = SegmentPoint{p, i, sp_is_left};
+        sq = SegmentPoint{q, i, !sp_is_left};
+
+        points.push_back(sp);
+        points.push_back(sq);
+
+        LineSegment l = LineSegment{p, q};
         //std::cout << "(" << l.first.x << "," << l.first.y << ") (" << l.second.x << "," << l.second.y << std::endl;
         ColorSegment cl = ColorSegment{l, BLACK};
 
@@ -144,10 +180,11 @@ int main()
     // Test sweep algorithm
     time_point begin_sweep = std::chrono::steady_clock::now();
 
-    crossingSweep(sweep_lines);
+    crossingSweep(sweep_lines, sweep_points);
 
     time_point end_sweep = std::chrono::steady_clock::now();
 
+    std::cout << "Experiment " << std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) << " - " << nols << " lines" << std::endl;
     std::cout << "Naive elapsed time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end_naive - begin_naive).count() << " ns" << std::endl;
     std::cout << "Sweep elapsed time: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end_sweep - begin_sweep).count() << " ns" << std::endl;
 
@@ -193,7 +230,7 @@ int main()
             break;
         }
 
-        DrawFPS(10, 10);
+        //DrawFPS(10, 10);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
